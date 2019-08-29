@@ -41,8 +41,19 @@ public class MinimaxPlayer extends Player {
 
 	@Override
 	public Move getMove(StateTree state) {
-		List<StateTree> states = generateNewStates(state, turn);
-		return new Move(false, 1);
+		int currentTurn = turn;
+		int beta 
+
+
+		return null;
+	}
+
+	/**
+	 * Evaluate the board state *relative to the current player*.
+	 * @return Board state evaluation; will be Integer.MAX_VALUE if a win for us or Integer.MIN_VALUE if a loss for us
+	 */
+	private int evaluate(StateTree state) {
+		return 0;
 	}
 
 	/**
