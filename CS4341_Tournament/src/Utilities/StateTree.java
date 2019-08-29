@@ -22,10 +22,10 @@ import java.lang.Math;
 public abstract class StateTree
 {
 	public int rows, columns, winNumber, turn; // board parameters
-	boolean pop1, pop2; // true if the player has used their pop move
+	public boolean pop1, pop2; // true if the player has used their pop move
 	int[][] boardMatrix; // matrix representing the board (0 = empty, 1 = player1, 2 = player2)
-	StateTree parent; // parent state
-	ArrayList<StateTree> children; // list of children states
+	public StateTree parent; // parent state
+	public ArrayList<StateTree> children; // list of children states
 	private PrintStream out = null;
 	
 	
