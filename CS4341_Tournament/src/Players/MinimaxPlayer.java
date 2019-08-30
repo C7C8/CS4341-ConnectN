@@ -5,12 +5,13 @@ import Referee.RefereeBoard;
 import Utilities.Move;
 import Utilities.StateTree;
 
+import java.awt.*;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
+import java.util.Stack;
 import java.util.stream.Collectors;
 
 public class MinimaxPlayer extends Player {
@@ -18,9 +19,9 @@ public class MinimaxPlayer extends Player {
 	/**
 	 * Helper fields for patching a bug in StateTree.
 	 */
-	private static int MAX_DEPTH = 5;
+	private static int MAX_DEPTH = 7;
 	private static int LOST = Integer.MIN_VALUE + 1;
-	private static int WON = Integer.MAX_VALUE - 1;
+	private static int WON = (Integer.MAX_VALUE - 1) / 2;
 	private static int TIE = 0;
 
 	private static PrintStream nullPrintStream = new PrintStream(new OutputStream() {
@@ -31,7 +32,7 @@ public class MinimaxPlayer extends Player {
 	});
 
 	public MinimaxPlayer(String n, int t, int l) {
-		super("MiniMax Player (crmyers)", t, l);
+		super(n, t, l);
 	}
 
 	@Override
@@ -100,15 +101,73 @@ public class MinimaxPlayer extends Player {
 	private int evaluate(StateTree state, int depth) {
 		final int result = Referee.checkForWinner(state);
 
-		// If a player has won and the player that did so is the player we're playing for, return the best possible
-		// value. Otherwise return the worst possible value
+		// Basics: detect leaf nodes, weight accordingly. Ties are counted as neutral.
 		if (result == 1 || result == 2)
 			return turn == result ? WON : LOST;
 		else if (result == 3)
 			return TIE;
 
-		Random random = new Random();
-		return random.nextInt();
+		// Cluster detection -- find clusters for both players, sum and weight accordingly
+		// Maximum cluster size is rows*columns since you can't fit anything more on the board
+		int[][] clusters = new int[2][state.rows * state.columns + 1];
+		boolean[][] explored = new boolean[state.rows][state.columns];
+		Stack<Point> stack = new Stack<>();
+		for (int x = 0; x < state.rows; x++) {
+			for (int y = 0; y < state.rows; y++) {
+				if (explored[x][y])
+					continue;
+
+				// Found an unexplored tile! Do DFS to find the cluster size.
+				final int player = state.turn;
+				int count = 0;
+				stack.push(new Point(x, y));
+				while (!stack.empty()) {
+					// Pop node off stack, mark it as explored, and increase the count
+					final Point p = stack.pop();
+					explored[p.x][p.y] = true;
+					count++;
+
+					// Explore neighbors
+					for (int ix = -1; ix <= 1; ix++) {
+						for (int iy = -1; iy <= 1; iy++) {
+							// Don't explore self
+							if (ix == 0 && iy == 0)
+								continue;
+
+							// Don't explore outside the board
+							final int nx = x + ix;
+							final int ny = y + iy;
+							if (nx < 0 || nx >= state.rows || ny < 0 || ny >= state.columns)
+								continue;
+
+							// Don't explore previously-explored areas or areas that don't belong to this player
+							if (explored[nx][ny] || state.getBoardMatrix()[nx][ny] != player)
+								continue;
+
+							// Add this node to the stack!
+							stack.push(new Point(nx, ny));
+						}
+					}
+				}
+
+				// Node fully explored; add the discovered cluster count to the clusters array
+				clusters[player - 1][count] += 1;
+			}
+		}
+
+		// Board fully explored; calculate weights by multiplying the square of the cluster count by the cube of the
+		// cluster size. Opposing player's scores are negative.
+		int score = 0;
+		for (int clusterSize = 1; clusterSize < state.rows * state.columns; clusterSize++) {
+			// i'm lazy
+			for (int player = 0; player < 2; player++) {
+				final int clusterCount = clusters[player][clusterSize];
+				final int weightedCount = (clusterCount * clusterCount) * (clusterSize * clusterSize * clusterSize);
+				score += ((player + 1) == turn ? weightedCount : -weightedCount);
+			}
+		}
+
+		return score;
 	}
 
 	// ====== HELPERS ======
