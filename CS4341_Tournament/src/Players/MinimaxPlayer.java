@@ -63,7 +63,7 @@ public class MinimaxPlayer extends Player {
 	 * @return The value of this node.
 	 */
 	public int minimax(StateTree state, final int depth, int alpha, int beta, final int currentTurn) {
-		int evaluation = evaluate(state);
+		int evaluation = evaluate(state, depth);
 		if (depth == MAX_DEPTH || evaluation == WON || evaluation == LOST || evaluation == TIE)
 			return evaluation;
 
@@ -97,7 +97,7 @@ public class MinimaxPlayer extends Player {
 	 * Evaluate the board state *relative to the current player*.
 	 * @return Board state evaluation; will be Integer.MAX_VALUE if a win for us or Integer.MIN_VALUE if a loss for us
 	 */
-	private int evaluate(StateTree state) {
+	private int evaluate(StateTree state, int depth) {
 		final int result = Referee.checkForWinner(state);
 
 		// If a player has won and the player that did so is the player we're playing for, return the best possible
@@ -147,7 +147,7 @@ public class MinimaxPlayer extends Player {
 				state.rows,
 				state.columns,
 				state.winNumber,
-				state.turn == 1 ? 2 : 1,
+				state.turn,
 				state.pop1,
 				state.pop2,
 				state);
