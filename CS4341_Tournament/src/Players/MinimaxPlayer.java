@@ -11,14 +11,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 public class MinimaxPlayer extends Player {
 
 	/**
 	 * Helper fields for patching a bug in StateTree.
 	 */
-	private static int MAX_DEPTH = 3;
+	private static int MAX_DEPTH = 5;
 	private static PrintStream nullPrintStream = new PrintStream(new OutputStream() {
 		@Override
 		public void write(int i) throws IOException {
@@ -62,15 +61,29 @@ public class MinimaxPlayer extends Player {
 			return evaluate(state);
 
 		// Do the actual legwork of generating moves, mapping them into child states, and applying minimax to each
-		Stream<Integer> results = generateNewMoves(state, currentTurn).stream()
+		List<StateTree> newStates = generateNewMoves(state, currentTurn).stream()
 				.map(move -> makeChildState(state, move))
-				.map(newState -> minimax(newState, depth + 1, alpha, beta, currentTurn == 1 ? 2 : 1));
+				.collect(Collectors.toList());
 
-		// Return the maximum or minimum depending on whether this turn is for the current player or the opponent
-		if (turn == currentTurn)
-			return results.max(Integer::compareTo).orElse(Integer.MIN_VALUE);
-		else
-			return results.min(Integer::compareTo).orElse(Integer.MAX_VALUE);
+		int best = (turn == currentTurn ? Integer.MIN_VALUE : Integer.MAX_VALUE);
+		for (StateTree newState : newStates) {
+			int value = minimax(newState, depth + 1, alpha, beta, currentTurn == 1 ? 2 : 1);
+			if (turn == currentTurn) {
+				// Maximizing
+				best = Math.max(best, value);
+				alpha = Math.max(alpha, best);
+				if (alpha >= beta)
+					break; // prune
+			}
+			else {
+				// Minimizing
+				best = Math.min(best, value);
+				beta = Math.min(beta, best);
+				if (alpha >= beta)
+					break; // prune
+			}
+		}
+		return best;
 	}
 
 	/**
