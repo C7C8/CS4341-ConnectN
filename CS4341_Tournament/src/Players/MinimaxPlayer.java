@@ -19,9 +19,9 @@ public class MinimaxPlayer extends Player {
 	/**
 	 * Helper fields for patching a bug in StateTree.
 	 */
-	private static int MAX_DEPTH = 7;
+	private static int MAX_DEPTH = 9;
 	private static int LOST = Integer.MIN_VALUE + 1;
-	private static int WON = (Integer.MAX_VALUE - 1) / 2;
+	private static int WON = Integer.MAX_VALUE - 1;
 	private static int TIE = 0;
 
 	private static PrintStream nullPrintStream = new PrintStream(new OutputStream() {
@@ -64,9 +64,11 @@ public class MinimaxPlayer extends Player {
 	 * @return The value of this node.
 	 */
 	public int minimax(StateTree state, final int depth, int alpha, int beta, final int currentTurn) {
-		int evaluation = evaluate(state, depth);
-		if (depth == MAX_DEPTH || evaluation == WON || evaluation == LOST || evaluation == TIE)
-			return evaluation;
+		int shouldEnd = checkEnd(state);
+		if (shouldEnd == WON || shouldEnd == LOST || shouldEnd == TIE)
+			return shouldEnd;
+		if (depth == MAX_DEPTH)
+			return evaluate(state);
 
 		// Do the actual legwork of generating moves, mapping them into child states, and applying minimax to each
 		List<StateTree> newStates = generateNewMoves(state, currentTurn).stream()
@@ -95,18 +97,23 @@ public class MinimaxPlayer extends Player {
 	}
 
 	/**
-	 * Evaluate the board state *relative to the current player*.
-	 * @return Board state evaluation; will be Integer.MAX_VALUE if a win for us or Integer.MIN_VALUE if a loss for us
+	 * Determines whether this is an ending state or not.
+	 * @return WON if a win, LOST if a loss, TIE if a tie, 1 otherwise.
 	 */
-	private int evaluate(StateTree state, int depth) {
+	private int checkEnd(StateTree state) {
 		final int result = Referee.checkForWinner(state);
-
-		// Basics: detect leaf nodes, weight accordingly. Ties are counted as neutral.
 		if (result == 1 || result == 2)
 			return turn == result ? WON : LOST;
 		else if (result == 3)
 			return TIE;
+		return 1;
+	}
 
+	/**
+	 * Evaluate the board state *relative to the current player*.
+	 * @return Board state evaluation; will be Integer.MAX_VALUE if a win for us or Integer.MIN_VALUE if a loss for us
+	 */
+	private int evaluate(StateTree state) {
 		// Cluster detection -- find clusters for both players, sum and weight accordingly
 		// Maximum cluster size is rows*columns since you can't fit anything more on the board
 
@@ -121,11 +128,11 @@ public class MinimaxPlayer extends Player {
 		for (int x = 0; x < state.rows; x++) {
 			for (int y = 0; y < state.rows; y++) {
 				// The 0x10'th bit is used to determine whether that tile has been explored or not.
-				if ((state.getBoardMatrix()[x][y] & 0x10) > 0)
+				if ((state.getBoardMatrix()[x][y] & 0x10) > 0 || state.getBoardMatrix()[x][y] == 0)
 					continue;
 
 				// Found an unexplored tile! Do DFS to find the cluster size.
-				final int player = state.turn;
+				final int player = state.getBoardMatrix()[x][y];
 				int count = 0;
 				stack.push(new Point(x, y));
 				while (!stack.empty()) {
@@ -148,7 +155,7 @@ public class MinimaxPlayer extends Player {
 								continue;
 
 							// Don't explore previously-explored areas or areas that don't belong to this player.
-							// Because the player owning the square will have the 0x10'th bit set, this ownership check
+							// Because the square will have the 0x10'th bit set if it's been explored, this ownership check
 							// also doubles as an exploration check.
 							if (state.getBoardMatrix()[nx][ny] != player)
 								continue;
@@ -159,7 +166,7 @@ public class MinimaxPlayer extends Player {
 					}
 				}
 
-				// Clean up by unsetting all the 0x10'th bits across the board
+				// Clean up by clearing all the 0x10'th bits across the board
 				for (int i = 0; i < state.rows; i++) {
 					for (int j = 0; j < state.columns; j++) {
 						state.getBoardMatrix()[i][j] &= ~0x10;
@@ -171,19 +178,78 @@ public class MinimaxPlayer extends Player {
 			}
 		}
 
-		// Board fully explored; calculate weights by multiplying the square of the cluster count by the cube of the
-		// cluster size. Opposing player's scores are negative.
-		int score = 0;
+		// Board fully explored; calculate clustering scores by multiplying the square of the cluster count by the
+		// cube of the cluster size. Opposing player's scores are negative. This exponential approach should heavily
+		// reward larger clusters.
+		int[] scores = {0, 0};
 		for (int clusterSize = 1; clusterSize < state.rows * state.columns; clusterSize++) {
-			// i'm lazy
 			for (int player = 0; player < 2; player++) {
 				final int clusterCount = clusters[player][clusterSize];
-				final int weightedCount = (clusterCount * clusterCount) * (clusterSize * clusterSize * clusterSize);
-				score += ((player + 1) == turn ? weightedCount : -weightedCount);
+				scores[player] += (clusterCount * clusterCount) * (clusterSize * clusterSize * clusterSize);
 			}
 		}
 
-		return score;
+		// ====
+		// Determine multipliers based on the longest path. Vertical lines are considered first, then horizontal, then
+		// diagonal.
+		// ====
+		int[] longestPath = {0, 0};
+		for (int x = 0; x < state.rows; x++) {
+			int currentPlayer = state.getBoardMatrix()[x][0];
+			int count = 0;
+			for (int y = 0; y < state.columns; y++) {
+				if (state.getBoardMatrix()[x][y] == currentPlayer)
+					count++;
+				else {
+					if (currentPlayer != 0)
+						longestPath[currentPlayer- 1] = Math.max(count, longestPath[currentPlayer - 1]);
+					currentPlayer = state.getBoardMatrix()[x][y];
+					count = 1;
+				}
+			}
+		}
+
+		for (int y = 0; y < state.columns; y++) {
+			int currentPlayer = state.getBoardMatrix()[0][y];
+			int count = 0;
+			for (int x = 0; x < state.rows; x++) {
+				// Duplicated code, ugh
+				if (state.getBoardMatrix()[x][y] == currentPlayer)
+					count++;
+				else {
+					if (currentPlayer != 0)
+						longestPath[currentPlayer- 1] = Math.max(count, longestPath[currentPlayer - 1]);
+					currentPlayer = state.getBoardMatrix()[x][y];
+					count = 1;
+				}
+			}
+		}
+
+		// Diagonal... this is going to be weird. *Heavily* inspired by something from stackoverflow.
+		final int maxDimension = Math.max(state.rows, state.columns);
+		for (int k = 0; k < maxDimension; k++) {
+			int currentPlayer = 0;
+			int count = 0;
+			for (int y = 0; y <= k; y++) {
+				int x = k - y;
+				if (x < state.rows && y < state.columns) {
+					// Duplicated code, ug-- wait, deja vu!
+					if (state.getBoardMatrix()[x][y] == currentPlayer)
+						count++;
+					else {
+						if (currentPlayer != 0)
+							longestPath[currentPlayer- 1] = Math.max(count, longestPath[currentPlayer - 1]);
+						currentPlayer = state.getBoardMatrix()[x][y];
+						count = 1;
+					}
+				}
+			}
+		}
+
+		// Apply multipliers, subtract scores appropriately (opponent should be negative), and return.
+		scores[0] *= longestPath[0];
+		scores[1] *= longestPath[0];
+		return turn == 1 ? scores[0] - scores[1] : scores[1] - scores[0];
 	}
 
 	// ====== HELPERS ======
@@ -208,6 +274,7 @@ public class MinimaxPlayer extends Player {
 				moves.add(move);
 		}
 
+//		Collections.shuffle(moves);
 		return moves;
 	}
 
