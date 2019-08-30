@@ -7,33 +7,22 @@ import Utilities.StateTree;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
-import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 public class MinimaxPlayer extends Player {
 
 	/**
 	 * Helper fields for patching a bug in StateTree.
 	 */
-	private static Field stateTreeOutField = null;
-	private static PrintStream nullPrintStream = null;
-
-	static {
-		try {
-			stateTreeOutField = StateTree.class.getDeclaredField("out");
-			stateTreeOutField.setAccessible(true);
-			nullPrintStream = new PrintStream(new OutputStream() {
-				@Override
-				public void write(int i) throws IOException {
-					// Does nothing, because we don't actually want to log anything.
-				}
-			});
-		} catch (NoSuchFieldException e) {
-			e.printStackTrace();
+	private static int MAX_DEPTH = 3;
+	private static PrintStream nullPrintStream = new PrintStream(new OutputStream() {
+		@Override
+		public void write(int i) throws IOException {
+			// Does nothing, because we don't actually want to log anything.
 		}
-	}
-
+	});
 
 	public MinimaxPlayer(String n, int t, int l) {
 		super("MiniMax Player (crmyers)", t, l);
@@ -41,11 +30,32 @@ public class MinimaxPlayer extends Player {
 
 	@Override
 	public Move getMove(StateTree state) {
-		int currentTurn = turn;
-		int beta 
+		return minimax(state, 1, Integer.MIN_VALUE, Integer.MAX_VALUE, turn).move;
+	}
 
+	/**
+	 * Recursive function for minimax
+	 * @param state State of the game at this node
+	 * @param depth Current depth
+	 * @param alpha Current alpha
+	 * @param beta Current beta
+	 * @param currentTurn Whose turn is it?
+	 * @return The value of this node.
+	 */
+	public MoveTuple minimax(StateTree state, final int depth, int alpha, int beta, final int currentTurn) {
+		if (depth == MAX_DEPTH)
+			return new MoveTuple(state, null, evaluate(state));
 
-		return null;
+		MoveTuple currentBest = new MoveTuple(null, null, currentTurn == turn ? Integer.MIN_VALUE : Integer.MAX_VALUE);
+		List<MoveTuple> newStates = generateNewStates(state, currentTurn == 1 ? 2 : 1);
+		for (MoveTuple newState : newStates) {
+			MoveTuple temp = minimax(state, depth + 1, alpha, beta, currentTurn == 1 ? 2 : 1);
+			newState.value = temp.value;
+			if ((turn == currentTurn && newState.value > currentBest.value) // Maximize
+					|| (turn != currentTurn && newState.value <currentBest.value)) // Minimize
+				currentBest = newState;
+		}
+		return currentBest;
 	}
 
 	/**
@@ -53,7 +63,30 @@ public class MinimaxPlayer extends Player {
 	 * @return Board state evaluation; will be Integer.MAX_VALUE if a win for us or Integer.MIN_VALUE if a loss for us
 	 */
 	private int evaluate(StateTree state) {
-		return 0;
+		Random random = new Random();
+		return random.nextInt();
+	}
+
+	// ====== HELPERS ======
+
+	/**
+	 * Class for storing moves alongside states
+	 */
+	private static class MoveTuple {
+		Move move;
+		StateTree state;
+		int value;
+
+		MoveTuple(StateTree state, Move move) {
+			this.state = state;
+			this.move = move;
+		}
+
+		MoveTuple(StateTree state, Move move, int value) {
+			this.state = state;
+			this.move = move;
+			this.value = value;
+		}
 	}
 
 	/**
@@ -62,8 +95,8 @@ public class MinimaxPlayer extends Player {
 	 * @param player Which player is the one making the move
 	 * @return List of states
 	 */
-	private List<StateTree> generateNewStates(final StateTree startingState, final int player) {
-		final List<StateTree> states = new ArrayList<>(startingState.columns);
+	private List<MoveTuple> generateNewStates(final StateTree startingState, final int player) {
+		final List<MoveTuple> moveTuples = new ArrayList<>(startingState.columns);
 		final boolean canPop = !(player == 1 ? startingState.pop1 : startingState.pop2);
 		for (int i = 0; i < startingState.columns; i++) {
 			// Non-pop move. If the move wasn't valid, the created object is recycled so we don't have to allocate
@@ -73,7 +106,7 @@ public class MinimaxPlayer extends Player {
 			boolean wasValid = childState.validMove(move);
 			if (wasValid) {
 				childState.makeMove(move);
-				states.add(childState);
+				moveTuples.add(new MoveTuple(childState, move));
 			}
 
 			// Pop move, if applicable
@@ -83,16 +116,22 @@ public class MinimaxPlayer extends Player {
 				move = new Move(true, i);
 				if (childState.validMove(move)) {
 					childState.makeMove(move);
-					states.add(childState);
+					moveTuples.add(new MoveTuple(childState, move));
 				}
 			}
 		}
 
-		return states;
+		return moveTuples;
 	}
 
+	/**
+	 * Helper for making a child state.
+	 * @param state
+	 * @param turn
+	 * @return
+	 */
 	private StateTree makeChildState(final StateTree state, final int turn) {
-		final RefereeBoard newState = new RefereeBoard(
+		final StateTree newState = new RefereeBoard(
 				state.rows,
 				state.columns,
 				state.winNumber,
@@ -108,12 +147,7 @@ public class MinimaxPlayer extends Player {
 		}
 
 		// Patch the 'out' field to have a null print stream object that just discards any input.
-		try {
-			stateTreeOutField.set(newState, nullPrintStream);
-		} catch (IllegalAccessException e) {
-			e.printStackTrace();
-		}
-
+		newState.setOut(nullPrintStream);
 		return newState;
 	}
 }
