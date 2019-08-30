@@ -135,8 +135,8 @@ public class MinimaxPlayer extends Player {
 								continue;
 
 							// Don't explore outside the board
-							final int nx = x + ix;
-							final int ny = y + iy;
+							final int nx = p.x + ix;
+							final int ny = p.y + iy;
 							if (nx < 0 || nx >= state.rows || ny < 0 || ny >= state.columns)
 								continue;
 
