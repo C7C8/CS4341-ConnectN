@@ -5,13 +5,10 @@ import Referee.RefereeBoard;
 import Utilities.Move;
 import Utilities.StateTree;
 
-import java.awt.*;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.PrintStream;
+import java.io.*;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
-import java.util.Stack;
 import java.util.stream.Collectors;
 
 public class MinimaxPlayer extends Player {
@@ -19,7 +16,7 @@ public class MinimaxPlayer extends Player {
 	/**
 	 * Helper fields for patching a bug in StateTree.
 	 */
-	private static int MAX_DEPTH = 9;
+	private static int MAX_DEPTH = 5;
 	private static int LOST = Integer.MIN_VALUE + 1;
 	private static int WON = Integer.MAX_VALUE - 1;
 	private static int TIE = 0;
@@ -64,6 +61,14 @@ public class MinimaxPlayer extends Player {
 	 * @return The value of this node.
 	 */
 	public int minimax(StateTree state, final int depth, int alpha, int beta, final int currentTurn) {
+		PrintStream out = new PrintStream(new FileOutputStream(FileDescriptor.out));
+		int dummy = evaluate(state);
+		out.println("Score: " + dummy);
+		out.println("We are " + turn + ". It is now " + currentTurn);
+		out.println(turn == currentTurn ? "Our turn" : "Their turn");
+		state.display();
+		out.println("===============");
+
 		int shouldEnd = checkEnd(state);
 		if (shouldEnd == WON || shouldEnd == LOST || shouldEnd == TIE)
 			return shouldEnd;
@@ -123,71 +128,70 @@ public class MinimaxPlayer extends Player {
 		// loop by setting a flag in the board matrix, which requires no additional memory and saves an ownership check
 		// later. This might seem minor, but the optimization yielded an overall 100%+ increase in the whole minimax
 		// implementation performance!
-		int[][] clusters = new int[2][state.rows * state.columns + 1];
-		Stack<Point> stack = new Stack<>();
-		for (int x = 0; x < state.rows; x++) {
-			for (int y = 0; y < state.rows; y++) {
-				// The 0x10'th bit is used to determine whether that tile has been explored or not.
-				if ((state.getBoardMatrix()[x][y] & 0x10) > 0 || state.getBoardMatrix()[x][y] == 0)
-					continue;
-
-				// Found an unexplored tile! Do DFS to find the cluster size.
-				final int player = state.getBoardMatrix()[x][y];
-				int count = 0;
-				stack.push(new Point(x, y));
-				while (!stack.empty()) {
-					// Pop node off stack, mark it as explored, and increase the count
-					final Point p = stack.pop();
-					state.getBoardMatrix()[p.x][p.y] |= 0x10;
-					count++;
-
-					// Explore neighbors
-					for (int ix = -1; ix <= 1; ix++) {
-						for (int iy = -1; iy <= 1; iy++) {
-							// Don't explore self
-							if (ix == 0 && iy == 0)
-								continue;
-
-							// Don't explore outside the board
-							final int nx = p.x + ix;
-							final int ny = p.y + iy;
-							if (nx < 0 || nx >= state.rows || ny < 0 || ny >= state.columns)
-								continue;
-
-							// Don't explore previously-explored areas or areas that don't belong to this player.
-							// Because the square will have the 0x10'th bit set if it's been explored, this ownership check
-							// also doubles as an exploration check.
-							if (state.getBoardMatrix()[nx][ny] != player)
-								continue;
-
-							// Add this node to the stack!
-							stack.push(new Point(nx, ny));
-						}
-					}
-				}
-
-				// Clean up by clearing all the 0x10'th bits across the board
-				for (int i = 0; i < state.rows; i++) {
-					for (int j = 0; j < state.columns; j++) {
-						state.getBoardMatrix()[i][j] &= ~0x10;
-					}
-				}
-
-				// Node fully explored; add the discovered cluster count to the clusters array
-				clusters[player - 1][count] += 1;
-			}
-		}
+//		int[][] clusters = new int[2][state.rows * state.columns + 1];
+//		Stack<Point> stack = new Stack<>();
+//		for (int x = 0; x < state.rows; x++) {
+//			for (int y = 0; y < state.rows; y++) {
+//				// The 0x10'th bit is used to determine whether that tile has been explored or not.
+//				if ((state.getBoardMatrix()[x][y] & 0x10) > 0 || state.getBoardMatrix()[x][y] == 0)
+//					continue;
+//
+//				// Found an unexplored tile! Do DFS to find the cluster size.
+//				final int player = state.getBoardMatrix()[x][y];
+//				int count = 0;
+//				stack.push(new Point(x, y));
+//				while (!stack.empty()) {
+//					// Pop node off stack, mark it as explored, and increase the count
+//					final Point p = stack.pop();
+//					state.getBoardMatrix()[p.x][p.y] |= 0x10;
+//					count++;
+//
+//					// Explore neighbors
+//					for (int ix = -1; ix <= 1; ix++) {
+//						for (int iy = -1; iy <= 1; iy++) {
+//							// Don't explore self
+//							if (ix == 0 && iy == 0)
+//								continue;
+//
+//							// Don't explore outside the board
+//							final int nx = p.x + ix;
+//							final int ny = p.y + iy;
+//							if (nx < 0 || nx >= state.rows || ny < 0 || ny >= state.columns)
+//								continue;
+//
+//							// Don't explore previously-explored areas or areas that don't belong to this player.
+//							// Because the square will have the 0x10'th bit set if it's been explored, this ownership check
+//							// also doubles as an exploration check.
+//							if (state.getBoardMatrix()[nx][ny] != player)
+//								continue;
+//
+//							// Add this node to the stack!
+//							stack.push(new Point(nx, ny));
+//						}
+//					}
+//				}
+//				// Node fully explored; add the discovered cluster count to the clusters array
+//				clusters[player - 1][count] += 1;
+//			}
+//		}
+//
+//		// Clean up by clearing all the 0x10'th bits across the board
+//		for (int i = 0; i < state.rows; i++) {
+//			for (int j = 0; j < state.columns; j++) {
+//				state.getBoardMatrix()[i][j] &= ~0x10;
+//			}
+//		}
 
 		// Board fully explored; calculate clustering scores by multiplying the square of the cluster count by the
 		// cube of the cluster size. Opposing player's scores are negative. This exponential approach should heavily
 		// reward larger clusters.
-		int[] scores = {0, 0};
-		for (int clusterSize = 1; clusterSize < state.rows * state.columns; clusterSize++) {
-			for (int player = 0; player < 2; player++) {
-				final int clusterCount = clusters[player][clusterSize];
-				scores[player] += (clusterCount * clusterCount) * (clusterSize * clusterSize * clusterSize);
-			}
-		}
+//		int[] scores = {0, 0};
+//		for (int clusterSize = 1; clusterSize < state.rows * state.columns; clusterSize++) {
+//			for (int player = 0; player < 2; player++) {
+//				final int clusterCount = clusters[player][clusterSize];
+//				scores[player] += (clusterCount * clusterCount) * (clusterSize * clusterSize * clusterSize);
+//			}
+//		}
 
 		// ====
 		// Determine multipliers based on the longest path. Vertical lines are considered first, then horizontal, then
@@ -225,7 +229,7 @@ public class MinimaxPlayer extends Player {
 			}
 		}
 
-		// Diagonal... this is going to be weird. *Heavily* inspired by something from stackoverflow.
+//		 Diagonal... this is going to be weird. *Heavily* inspired by something from stackoverflow.
 		final int maxDimension = Math.max(state.rows, state.columns);
 		for (int k = 0; k < maxDimension; k++) {
 			int currentPlayer = 0;
@@ -247,9 +251,11 @@ public class MinimaxPlayer extends Player {
 		}
 
 		// Apply multipliers, subtract scores appropriately (opponent should be negative), and return.
-		scores[0] *= longestPath[0];
-		scores[1] *= longestPath[0];
-		return turn == 1 ? scores[0] - scores[1] : scores[1] - scores[0];
+//		scores[0] *= longestPath[0] * longestPath[0];
+//		scores[1] *= longestPath[1] * longestPath[1];
+		longestPath[0] *= longestPath[0] * longestPath[0] * longestPath[0];
+		longestPath[1] *= longestPath[1] * longestPath[1] * longestPath[1];
+		return (int)(turn == 1 ? longestPath[0] - Math.pow(longestPath[1], 5) : longestPath[1] - Math.pow(longestPath[0], 5));
 	}
 
 	// ====== HELPERS ======
@@ -274,7 +280,7 @@ public class MinimaxPlayer extends Player {
 				moves.add(move);
 		}
 
-//		Collections.shuffle(moves);
+		Collections.shuffle(moves);
 		return moves;
 	}
 
@@ -301,7 +307,7 @@ public class MinimaxPlayer extends Player {
 		}
 
 		// Patch the 'out' field to have a null print stream object that just discards any input.
-		newState.setOut(nullPrintStream);
+		newState.setOut(new PrintStream(new FileOutputStream(FileDescriptor.out)));
 		newState.makeMove(move);
 		return newState;
 	}
